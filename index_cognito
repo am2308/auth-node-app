@@ -1,0 +1,73 @@
+const express = require('express');
+const passport = require('passport');
+const OAuth2Strategy = require('passport-oauth2');
+const session = require('express-session');
+const axios = require('axios');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ✅ Configure Express Session
+app.use(session({ secret: "supersecret", resave: false, saveUninitialized: true }));
+
+// ✅ Configure Passport for AWS Cognito with Google OAuth
+passport.use(new OAuth2Strategy(
+    {
+        authorizationURL: `https://${process.env.COGNITO_DOMAIN}/oauth2/authorize?identity_provider=Google&response_type=CODE`,
+        tokenURL: `https://${process.env.COGNITO_DOMAIN}/oauth2/token`,
+        clientID: process.env.COGNITO_CLIENT_ID,
+        clientSecret: process.env.COGNITO_CLIENT_SECRET,
+        callbackURL: "http://localhost:3000/auth/cognito/callback",
+    },
+    async (accessToken, refreshToken, profile, done) => {
+        try {
+            // 🔹 Fetch user details from AWS Cognito
+            const userInfo = await axios.get(`https://${process.env.COGNITO_DOMAIN}/oauth2/userInfo`, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+
+            return done(null, { accessToken, userInfo: userInfo.data });
+        } catch (error) {
+            return done(error);
+        }
+    }
+));
+
+passport.serializeUser((user, done) => done(null, user));
+passport.deserializeUser((user, done) => done(null, user));
+
+// ✅ Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// ✅ Middleware to Check if User is Authenticated
+const isAuthenticated = (req, res, next) => {
+    if (req.isAuthenticated()) {
+        return next(); // ✅ User is logged in, continue to the route
+    }
+    res.redirect('/auth/cognito'); // 🔴 Redirect to Cognito login
+};
+
+// ✅ Protected Route: Requires Authentication
+app.get('/', isAuthenticated, (req, res) => {
+    res.json({ message: "Hello, Yonder!" });
+});
+
+// ✅ Login Route (Redirects to Cognito Hosted UI with Google)
+app.get('/auth/cognito', passport.authenticate('oauth2'));
+
+// ✅ Callback Route (Redirects to Home Page After Login)
+app.get('/auth/cognito/callback', 
+    passport.authenticate('oauth2', { failureRedirect: '/' }), 
+    (req, res) => {
+        res.redirect('/'); // 🔹 Redirect user to home page after login
+    }
+);
+
+// ✅ Logout Route (Clears Session & Redirects)
+app.get('/logout', (req, res) => {
+    req.logout(() => res.redirect('/'));
+});
+
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

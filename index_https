@@ -1,0 +1,23 @@
+const express = require('express');
+const https = require('https');
+const fs = require('fs');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ✅ Load SSL Certificates
+const httpsOptions = {
+    key: fs.readFileSync('./certs/localhost.key'),  // Private key
+    cert: fs.readFileSync('./certs/localhost.crt')  // Certificate
+};
+
+// ✅ Route
+app.get('/', (req, res) => {
+    res.json({ message: "Hello, Yonder!" });
+});
+
+// ✅ Start HTTPS Server
+https.createServer(httpsOptions, app).listen(PORT, () => {
+    console.log(`✅ HTTPS Server running on https://localhost:${PORT}`);
+});
